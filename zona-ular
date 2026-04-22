@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Zona Ular - Seperti Slither.io</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(145deg, #1a472a, #0e2a1a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .game-container {
+            background: #0a2f1f;
+            padding: 20px;
+            border-radius: 40px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 24px;
+            box-shadow: 0 0 0 5px #ffd966, 0 10px 25px black;
+            cursor: none;
+            background-color: #1e3b2c;
+        }
+
+        .info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            color: #ffefb9;
+            font-weight: bold;
+            font-size: 1.2rem;
+            text-shadow: 2px 2px 0 #2c5a2e;
+            padding: 0 20px;
+        }
+
+        .controls {
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .controls p {
+            color: #ddd8b0;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background: #f5bc70;
+            border: none;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 8px 24px;
+            border-radius: 40px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: 0.1s linear;
+            box-shadow: 0 4px 0 #8b5a2b;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #8b5a2b;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="1000" height="600"></canvas>
+        <div class="info">
+            <p>🐍 Panjang: <span id="score">0</span></p>
+            <p>🏆 Tertinggi: <span id="highScore">0</span></p>
+        </div>
+        <div class="controls">
+            <p>🖱️ Gerakkan mouse / sentuh layar untuk mengubah arah</p>
+            <button id="restartBtn">🔄 Mulai Ulang</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = 1000;
+        let height = 600;
+
+        let snake = [];
+        let snakeLength = 5;
+        let direction = { x: 1, y: 0 };
+        let targetDir = { x: 1, y: 0 };
+
+        let foods = [];
+        const FOOD_COUNT = 20;
+        const FOOD_RADIUS = 5;
+
+        let gameRunning = true;
+        let score = 0;
+        let highScore = localStorage.getItem('snakeHighScore') || 0;
+        let animationId;
+
+        const SEGMENT_SIZE = 12;
+        const SNAKE_RADIUS = SEGMENT_SIZE / 2;
+
+        let lastMoveTime = 0;
+        const MOVE_INTERVAL = 90;
+
+        let mouseX = width/2, mouseY = height/2;
+
+        function init() {
+            snake = [];
+            let startX = width/2;
+            let startY = height/2;
+            for(let i = 0; i < snakeLength; i++) {
+                snake.push({
+                    x: startX - i * SEGMENT_SIZE,
+                    y: startY
+                });
+            }
+            direction = { x: 1, y: 0 };
+            targetDir = { x: 1, y: 0 };
+            score = 0;
+            gameRunning = true;
+            updateScoreDisplay();
+            generateFoods();
+        }
+
+        function generateFoods() {
+            foods = [];
+            while(foods.length < FOOD_COUNT) {
+                let fx = Math.random() * (width - 2*FOOD_RADIUS) + FOOD_RADIUS;
+                let fy = Math.random() * (height - 2*FOOD_RADIUS) + FOOD_RADIUS;
+                let collides = snake.some(seg => Math.hypot(seg.x - fx, seg.y - fy) < SNAKE_RADIUS + FOOD_RADIUS);
+                if(!collides) {
+                    foods.push({ x: fx, y: fy, radius: FOOD_RADIUS });
+                }
+            }
+        }
+
+        function updateScoreDisplay() {
+            document.getElementById('score').innerText = score;
+            if(score > highScore) {
+                highScore = score;
+                localStorage.setItem('snakeHighScore', highScore);
+                document.getElementById('highScore').innerText = highScore;
+            }
+        }
+
+        function addOneFood() {
+            let maxAttempts = 200;
+            while(maxAttempts-- > 0) {
+                let fx = Math.random() * (width - 2*FOOD_RADIUS) + FOOD_RADIUS;
+                let fy = Math.random() * (height - 2*FOOD_RADIUS) + FOOD_RADIUS;
+                let collides = snake.some(seg => Math.hypot(seg.x - fx, seg.y - fy) < SNAKE_RADIUS + FOOD_RADIUS);
+                if(!collides) {
+                    foods.push({ x: fx, y: fy, radius: FOOD_RADIUS });
+                    break;
+                }
+            }
+        }
+
+        function checkEatFood() {
+            const head = snake[0];
+            for(let i = 0; i < foods.length; i++) {
+                const food = foods[i];
+                const dist = Math.hypot(head.x - food.x, head.y - food.y);
+                if(dist < SNAKE_RADIUS + food.radius) {
+                    foods.splice(i,1);
+                    score++;
+                    updateScoreDisplay();
+                    snakeLength++;
+                    let last = snake[snake.length-1];
+                    snake.push({ x: last.x, y: last.y });
+                    addOneFood();
+                    return;
+                }
+            }
+        }
+
+        function moveSnake() {
+            if(!gameRunning) return;
+            
+            let dot = direction.x * targetDir.x + direction.y * targetDir.y;
+            if(dot > -0.9) {
+                direction = { x: targetDir.x, y: targetDir.y };
+            }
+            
+            const head = snake[0];
+            const newHead = {
+                x: head.x + direction.x * SEGMENT_SIZE,
+                y: head.y + direction.y * SEGMENT_SIZE
+            };
+            
+            if(newHead.x < SNAKE_RADIUS || newHead.x > width - SNAKE_RADIUS ||
+               newHead.y < SNAKE_RADIUS || newHead.y > height - SNAKE_RADIUS) {
+                gameOver();
+                return;
+            }
+            
+            snake.unshift(newHead);
+            while(snake.length > snakeLength) {
+                snake.pop();
+            }
+            
+            const currentHead = snake[0];
+            for(let i = 1; i < snake.length; i++) {
+                if(Math.hypot(currentHead.x - snake[i].x, currentHead.y - snake[i].y) < SNAKE_RADIUS - 1) {
+                    gameOver();
+                    return;
+                }
+            }
+            
+            checkEatFood();
+        }
+
+        function gameOver() {
+            if(!gameRunning) return;
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            setTimeout(() => {
+                alert(`💀 Game Over! Panjangmu: ${score}\nTekan OK untuk mulai lagi`);
+                restartGame();
+            }, 50);
+        }
+
+        function restartGame() {
+            init();
+            gameRunning = true;
+            startGameLoop();
+        }
+
+        function updateDirectionFromMouse() {
+            if(!gameRunning) return;
+            const head = snake[0];
+            let dx = mouseX - head.x;
+            let dy = mouseY - head.y;
+            let len = Math.hypot(dx, dy);
+            if(len > 0.01) {
+                targetDir = { x: dx / len, y: dy / len };
+            }
+        }
+
+        function gameLoop(now) {
+            if(!gameRunning) return;
+            animationId = requestAnimationFrame(gameLoop);
+            
+            updateDirectionFromMouse();
+            
+            if(now - lastMoveTime >= MOVE_INTERVAL) {
+                lastMoveTime = now;
+                moveSnake();
+            }
+            
+            drawGame();
+        }
+
+        function startGameLoop() {
+            lastMoveTime = 0;
+            if(animationId) cancelAnimationFrame(animationId);
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, width, height);
+            
+            ctx.strokeStyle = "#42855e";
+            ctx.lineWidth = 0.5;
+            for(let i = 0; i < width; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i % height);
+                ctx.lineTo(width, i % height);
+                ctx.stroke();
+            }
+            
+            for(let f of foods) {
+                ctx.beginPath();
+                ctx.arc(f.x, f.y, f.radius, 0, Math.PI*2);
+                ctx.fillStyle = "#ffaa44";
+                ctx.fill();
+                ctx.shadowBlur = 6;
+                ctx.fillStyle = "#ffdd88";
+                ctx.arc(f.x, f.y, f.radius-1, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+            
+            for(let i = 0; i < snake.length; i++) {
+                const seg = snake[i];
+                let gradient = ctx.createRadialGradient(seg.x-3, seg.y-3, 3, seg.x, seg.y, SNAKE_RADIUS);
+                gradient.addColorStop(0, "#86bf4c");
+                gradient.addColorStop(1, "#3c8c40");
+                ctx.beginPath();
+                ctx.arc(seg.x, seg.y, SNAKE_RADIUS-0.5, 0, Math.PI*2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = "#1e4f1a";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                
+                if(i === 0) {
+                    ctx.fillStyle = "white";
+                    ctx.beginPath();
+                    ctx.arc(seg.x + 3, seg.y - 3, 2.5, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(seg.x - 3, seg.y - 3, 2.5, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = "#0a2a1a";
+                    ctx.beginPath();
+                    ctx.arc(seg.x + direction.x*4 + (direction.y*2), seg.y + direction.y*4 - (direction.x*2), 1.2, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(seg.x + direction.x*4 - (direction.y*2), seg.y + direction.y*4 + (direction.x*2), 1.2, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+            
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 12, 0, Math.PI*2);
+            ctx.strokeStyle = "gold";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 5, 0, Math.PI*2);
+            ctx.fillStyle = "rgba(255,215,0,0.5)";
+            ctx.fill();
+        }
+
+        function onMouseMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let canvasX = (e.clientX - rect.left) * scaleX;
+            let canvasY = (e.clientY - rect.top) * scaleY;
+            canvasX = Math.min(width, Math.max(0, canvasX));
+            canvasY = Math.min(height, Math.max(0, canvasY));
+            mouseX = canvasX;
+            mouseY = canvasY;
+        }
+
+        function onTouchMove(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            let canvasX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+            let canvasY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+            canvasX = Math.min(width, Math.max(0, canvasX));
+            canvasY = Math.min(height, Math.max(0, canvasY));
+            mouseX = canvasX;
+            mouseY = canvasY;
+        }
+
+        canvas.addEventListener('mousemove', onMouseMove);
+        canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+        canvas.addEventListener('touchstart', onTouchMove);
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            restartGame();
+        });
+
+        document.getElementById('highScore').innerText = highScore;
+        init();
+        startGameLoop();
+    </script>
+</body>
+</html>
